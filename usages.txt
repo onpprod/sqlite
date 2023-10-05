@@ -1,0 +1,24 @@
+ query = {
+                '$and': [
+                    {'timestamp': {'$gte': start}},
+                    {'timestamp': {'$lte': end}},
+                    {'idShort': str(variable_historized.idShort)}
+                ]
+            }
+
+
+ self.mongo.create_index('timestamp', 1)
+        last_element = await self.mongo.find_by_collection(
+            'variable_history',
+            {},
+            sort=[('timestamp', -1)],
+            size=1)
+        self.count = last_element[0]['id'] if len(last_element) else 0
+
+ else:
+                database_values = await self.mongo.find(query, projection, size=nb_values)
+                values = [data['value'] for data in database_values if data]
+
+ elements = await self.mongo.find_by_collection(
+                collection, query, projection=projection, size=nb_values, sort=sort)
+
