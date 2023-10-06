@@ -83,11 +83,15 @@ class SQLiteDB:
         self.insert_dict(table_name, data)
 
     # ==================================================================================================================
-    # async \
-    def find(self, query, projection=None, size=1000):
+    async def find(self, query, projection=None, size=1000):
         table_name = "variable_history"
+        await self.find_by_collection(table_name,query,projection,size,None)
+
+    # async \
+    def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
+
         columns = self.get_columns(table_name)
-        query_sql, values = self.find_query_generator(table_name,columns,query,None,size)
+        query_sql, values = self.find_query_generator(table_name, columns, query, projection, sort, size)
 
         new_values = []
         for value in values:
@@ -100,42 +104,10 @@ class SQLiteDB:
         self.cursor.execute(query_sql, new_values)
         results = self.cursor.fetchall()
 
-        # if projection:
-        #     if 'value' in projection and projection['value'] == 1:
-        #         print()
-        #     if '_id' in projection and projection['_id'] == 0:
-        #         print()
         output = []
         for document in results:
             output.append(self.convert_data_to_dict(self.convert_data_to_zip(columns, document)))
         return output
-
-    async def find_by_collection(self, collection: str, query: dict, projection=None, size=1000, sort=None):
-        table_name = "variable_history"
-        columns = self.get_columns(table_name)
-        query_sql, values = self.find_query_generator(table_name, columns, query, None,size)
-        self.cursor.execute(query_sql, values)
-        results = self.cursor.fetchall()
-        # if projection:
-        #     if 'value' in projection and projection['value'] == 1:
-        #         print()
-        #     if '_id' in projection and projection['_id'] == 0:
-        #         print()
-        output = []
-        for document in results:
-            output.append(self.convert_data_to_dict(self.convert_data_to_zip(columns, document)))
-        return output
-
-        # if sort is None:
-        #     sort = []
-        #
-        # if projection is None:
-        #     projection = {}
-        #
-        # db = self.database()
-        # cursor = db[collection].find(query, projection).limit(size).sort(sort)
-        #
-        # return await cursor.to_list(size)
 
 
     # ==================================================================================================================
@@ -157,15 +129,19 @@ class SQLiteDB:
     Auxiliary data manipulation and conversion functions
     """
     # ==================================================================================================================
-
-    def find_query_generator(self,table_name,columns,query,sort,size):
-        where = "WHERE" if len(query) > 0 else ""
-        query_sql = f"SELECT * FROM {table_name} {where} "
+    def find_query_generator(self, table_name:list, columns_names:list, query_conditions:dict, projection:dict, sort, size):
+        where = "WHERE" if len(query_conditions) > 0 else ""
+        select_columns = "*"
+        if projection:
+            select_list = [coluna for coluna, valor in projection.items() if valor == 1]
+            select_columns = ", ".join(select_list)
+        query_sql = f"SELECT {select_columns} FROM {table_name} {where} "
         conditions = []
         values = []
-        if '$and' in query:
-            for condition in query['$and']:
+        if '$and' in query_conditions:
+            for condition in query_conditions['$and']:
                 for key, subquery in condition.items():
+                    print(key,subquery)
                     if key == 'timestamp':
                         if '$gte' in subquery:
                             conditions.append('timestamp >= ?')
@@ -176,10 +152,10 @@ class SQLiteDB:
                                 datetime_obj = datetime.fromisoformat(date_str)
                                 timestamp_unix = int(datetime_obj.timestamp())
                             values.append(timestamp_unix)
-                        if 'c' in subquery:
+                        if '$lte' in subquery:
                             conditions.append('timestamp <= ?')
                             if isinstance(subquery['$lte'], dict):
-                                timestamp_unix = self.convert_timestamp(subquery['$gte'])
+                                timestamp_unix = self.convert_timestamp(subquery['$lte'])
                             else:
                                 date_str = subquery['$lte'].replace('Z', '+00:00')
                                 datetime_obj = datetime.fromisoformat(date_str)
@@ -189,10 +165,10 @@ class SQLiteDB:
                         conditions.append('idShort = ?')
                         values.append(subquery)
 
-        for column in columns:
-            if column in query:
-                if isinstance(query[column], dict):
-                    for op, value in query[column].items():
+        for column in columns_names:
+            if column in query_conditions:
+                if isinstance(query_conditions[column], dict):
+                    for op, value in query_conditions[column].items():
                         if op == "$gt":
                             conditions.append(f'{column} > ?')
                         elif op == "$gte":
@@ -204,9 +180,15 @@ class SQLiteDB:
                         values.append(value)
                 else:
                     conditions.append(f'{column} = ?')
-                    values.append(query[column])
+                    values.append(query_conditions[column])
 
         query_sql += " AND ".join(conditions)
+
+        if sort is not None:
+            if sort == 1:
+                query_sql += " ORDER BY seu_timestamp_column ASC"
+            elif sort == -1:
+                query_sql += " ORDER BY seu_timestamp_column DESC"
         query_sql += f" LIMIT {size}"
 
         return query_sql, values
