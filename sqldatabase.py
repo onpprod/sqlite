@@ -1,6 +1,5 @@
 import sqlite3
 import json
-import asyncio
 from datetime import datetime
 
 
@@ -71,21 +70,28 @@ class SQLiteDB:
         self.conn.commit()
 
     # ==================================================================================================================
-    async def insert_one(self, data):
+    def insert_one(self, data):
         table_name = 'variable_history'
-        await self.insert_one_by_collection(table_name, data)
+        timestamp = data['timestamp']
+        data['timestamp'] = self.convert_timestamp(timestamp)
+        data = self.convert_data_to_string(data)
+        self.insert_dict(table_name, data)
 
-    async def insert_one_by_collection(self, table_name, data):
+    # async \
+    def insert_one_by_collection(self, table_name, data):
         data['timestamp'] = self.convert_timestamp(data['timestamp'])
         data = self.convert_data_to_string(data)
-        await asyncio.to_thread(self.insert_dict, table_name, data)
+        self.insert_dict(table_name, data)
 
     # ==================================================================================================================
-    async def find(self, query, projection=None, size=1000):
+    # async \
+    def find(self, query, projection=None, size=1000):
         table_name = "variable_history"
-        return await asyncio.to_thread(self.find_by_collection, table_name, query, projection, size, None)
+        # await (self.find_by_collection(table_name,query,projection,size,None))
+        return self.find_by_collection(table_name, query, projection, size, None)
 
-    async def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
+    # async \
+    def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
 
         columns = self.get_columns(table_name)
 
@@ -116,7 +122,8 @@ class SQLiteDB:
         return output
 
     # ==================================================================================================================
-    async def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
+    # async\
+    def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
         pesquisa_base = self.find(query, size=size)
 
         pesquisa_filtrada = [dado for dado in pesquisa_base if (dado["id"] % step) == 0]
@@ -208,7 +215,7 @@ class SQLiteDB:
         query_sql += f" LIMIT {size}"
         return query_sql, values
 
-    def create_query(nome_tabela, ordem=None, limite=1000):
+    def gerar_query(nome_tabela, ordem=None, limite=1000):
         # Conecte-se ao banco de dados SQLite
         conn = sqlite3.connect('seu_banco_de_dados.db')
         cursor = conn.cursor()
