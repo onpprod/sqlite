@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import asyncio
 from datetime import datetime
 
 
@@ -70,45 +71,57 @@ class SQLiteDB:
         self.conn.commit()
 
     # ==================================================================================================================
-    def insert_one(self, data):
+    async def insert_one(self, data):
         table_name = 'variable_history'
-        timestamp = data['timestamp']
-        data['timestamp'] = self.convert_timestamp(timestamp)
-        data = self.convert_data_to_string(data)
-        self.insert_dict(table_name, data)
+        await self.insert_one_by_collection(table_name, data)
 
     async def insert_one_by_collection(self, table_name, data):
         data['timestamp'] = self.convert_timestamp(data['timestamp'])
         data = self.convert_data_to_string(data)
-        self.insert_dict(table_name, data)
+        await asyncio.to_thread(self.insert_dict, table_name, data)
 
     # ==================================================================================================================
     async def find(self, query, projection=None, size=1000):
         table_name = "variable_history"
-        await self.find_by_collection(table_name,query,projection,size,None)
+        return await asyncio.to_thread(self.find_by_collection, table_name, query, projection, size, None)
 
-    # async \
-    def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
+    async def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
 
         columns = self.get_columns(table_name)
+
         query_sql, values = self.find_query_generator(table_name, columns, query, projection, sort, size)
 
         new_values = []
+
         for value in values:
             if isinstance(value, dict):
-                new_values.append(self.convert_timestamp(value))
+                if value.keys() == 'timestamp':
+                    new_values.append(self.convert_timestamp(value))
             else:
                 new_values.append(value)
+
         values = None
 
         self.cursor.execute(query_sql, new_values)
         results = self.cursor.fetchall()
-
         output = []
+
         for document in results:
-            output.append(self.convert_data_to_dict(self.convert_data_to_zip(columns, document)))
+            if projection is None:
+                output.append(self.convert_data_to_dict(self.convert_data_to_zip(columns, document)))
+            else:
+                valid_keys = [key for key, value in projection.items() if value == 1]
+                output.append(self.convert_data_to_dict(self.convert_data_to_zip(valid_keys, document)))
+
         return output
 
+    # ==================================================================================================================
+    async def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
+        pesquisa_base = self.find(query, size=size)
+
+        pesquisa_filtrada = [dado for dado in pesquisa_base if (dado["id"] % step) == 0]
+
+        return pesquisa_filtrada
 
     # ==================================================================================================================
     def count(self):
@@ -128,8 +141,10 @@ class SQLiteDB:
     """
     Auxiliary data manipulation and conversion functions
     """
+
     # ==================================================================================================================
-    def find_query_generator(self, table_name:list, columns_names:list, query_conditions:dict, projection:dict, sort, size):
+    def find_query_generator(self, table_name: list, columns_names: list, query_conditions: dict, projection: dict,
+                             sort, size):
         where = "WHERE" if len(query_conditions) > 0 else ""
         select_columns = "*"
         if projection:
@@ -141,7 +156,6 @@ class SQLiteDB:
         if '$and' in query_conditions:
             for condition in query_conditions['$and']:
                 for key, subquery in condition.items():
-                    print(key,subquery)
                     if key == 'timestamp':
                         if '$gte' in subquery:
                             conditions.append('timestamp >= ?')
@@ -185,15 +199,16 @@ class SQLiteDB:
         query_sql += " AND ".join(conditions)
 
         if sort is not None:
-            if sort == 1:
-                query_sql += " ORDER BY seu_timestamp_column ASC"
-            elif sort == -1:
-                query_sql += " ORDER BY seu_timestamp_column DESC"
-        query_sql += f" LIMIT {size}"
+            for item in sort:
+                if item[1] == 1:
+                    query_sql += f" ORDER BY {item[0]} ASC"
+                elif item[1] == -1:
+                    query_sql += f" ORDER BY {item[0]} DESC"
 
+        query_sql += f" LIMIT {size}"
         return query_sql, values
 
-    def gerar_query(nome_tabela, ordem=None, limite=1000):
+    def create_query(nome_tabela, ordem=None, limite=1000):
         # Conecte-se ao banco de dados SQLite
         conn = sqlite3.connect('seu_banco_de_dados.db')
         cursor = conn.cursor()
@@ -218,16 +233,12 @@ class SQLiteDB:
         return resultado
 
     def insert_dict(self, tabela, dicionario):
-        # Verifique se a tabela existe e, se não existir, crie-a
         self.cursor.execute(f"PRAGMA table_info({tabela})")
         if not self.cursor.fetchall():
-            # Crie a tabela com colunas baseadas nas chaves e tipos do dicionário
             create_table_sql = f"CREATE TABLE {tabela} ({', '.join(f'{chave} {type(valor).__name__}' for chave, valor in dicionario.items())})"
             self.cursor.execute(create_table_sql)
-        # Insira os dados do dicionário na tabela
         insert_sql = f"INSERT INTO {tabela} ({', '.join(dicionario.keys())}) VALUES ({', '.join(['?'] * len(dicionario))})"
         self.cursor.execute(insert_sql, list(dicionario.values()))
-        # Comita a transação e feche a conexão
         self.conn.commit()
 
     def list_verifier(self, lista1: list, lista2: list):
@@ -253,15 +264,12 @@ class SQLiteDB:
     def convert_data_to_string(self, d):
         for chave, valor in d.items():
             if isinstance(valor, dict):
-                # Se o valor é um dicionário, converte para JSON
                 d[chave] = json.dumps(valor)
             elif isinstance(valor, list):
-                # Se o valor é uma lista, verificamos se há dicionários nas listas e os convertemos
                 for i, item in enumerate(valor):
                     if isinstance(item, dict):
                         valor[i] = json.dumps(item)
             elif isinstance(valor, tuple):
-                # Se o valor é uma tupla, verificamos se há dicionários nas tuplas e os convertemos
                 valor_lista = list(valor)
                 for i, item in enumerate(valor_lista):
                     if isinstance(item, dict):
@@ -273,19 +281,15 @@ class SQLiteDB:
         for chave, valor in d.items():
             if isinstance(valor, str):
                 try:
-                    # Tenta analisar o valor como JSON
                     valor_parseado = json.loads(valor)
                     if isinstance(valor_parseado, dict):
-                        # Se o valor é um dicionário, substitui o valor original
                         d[chave] = self.convert_data_to_dict(valor_parseado)
                     elif isinstance(valor_parseado, list):
-                        # Se o valor é uma lista, verifica se há dicionários nas listas
                         for i, item in enumerate(valor_parseado):
                             if isinstance(item, dict):
                                 valor_parseado[i] = self.convert_data_to_dict(item)
                         d[chave] = valor_parseado
                 except json.JSONDecodeError:
-                    # Se não for um JSON válido, mantém o valor original
                     pass
         return d
 
@@ -293,6 +297,7 @@ class SQLiteDB:
     """
     Sqlite manipulation auxiliary functions
     """
+
     # ==================================================================================================================
     def create_table(self, table_name, columns):
         """
@@ -313,13 +318,14 @@ class SQLiteDB:
         self.conn.commit()
 
     def get_tables_and_columns(self):
-        # Consulta SQL para obter os nomes de todas as tabelas no banco de dados
+        """
+        Consulta SQL para obter os nomes de todas as tabelas e colunas no banco de dados
+        :return:
+        """
         tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
         self.cursor.execute(tables_query)
         tables = self.cursor.fetchall()
-
         table_info = {}
-
         for table in tables:
             table_name = table[0]
             columns_query = f"PRAGMA table_info({table_name});"
@@ -327,7 +333,6 @@ class SQLiteDB:
             columns_info = self.cursor.fetchall()
             column_names = [column[1] for column in columns_info]
             table_info[table_name] = column_names
-
         return table_info
 
     def get_tables(self):
