@@ -1,5 +1,6 @@
 from sqldatabase import SQLiteDB
 import time
+# juste think
 
 # Exemplo de uso da classe SQLiteDB
 if __name__ == "__main__":
