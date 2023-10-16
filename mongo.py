@@ -24,7 +24,7 @@ class Mongo:
 
     def create_index(self, index, order, unique=True):
         db = self.database()
-        db.create_index([(index, order)], unique=unique)
+        db.variable_history.create_index([(index, order)], unique=unique)
 
     def create_index_by_collection(self, collection, index, order, unique=True):
         db = self.database()
@@ -43,7 +43,7 @@ class Mongo:
     async def find(self, query: dict, projection=None, size=1000):
         db = self.database()
 
-        cursor = db.variable_history.find_by_collection(query, projection).limit(size)
+        cursor = db.variable_history.find(query, projection).limit(size)
         documents = await cursor.to_list(size)
         return documents
 
@@ -55,7 +55,7 @@ class Mongo:
             projection = {}
 
         db = self.database()
-        cursor = db[collection].find_by_collection(query, projection).limit(size).sort(sort)
+        cursor = db[collection].find(query, projection).limit(size).sort(sort)
 
         return await cursor.to_list(size)
 
@@ -64,7 +64,7 @@ class Mongo:
             sort = []
 
         db = self.database()
-        return db[collection].find_by_collection(query).limit(size).sort(sort)
+        return db[collection].find(query).limit(size).sort(sort)
 
     async def aggregation(self, query: dict, step: int, count: int, size=1000):
         db = self.database()
@@ -79,7 +79,7 @@ class Mongo:
                             '$mod': [
                                 '$id', step
                             ]
-                        }, 0 
+                        }, 0
                             ]
                         },
                         'then': '$$KEEP',

@@ -1,13 +1,33 @@
-from sqldatabase import SQLiteDB
+import asyncio
+import aiosqlite
+from newsqldb import SQLiteDB
 import time
-# juste think
 
-# Exemplo de uso da classe SQLiteDB
+query = "CREATE TABLE pessoas (nome TEXT NOT NULL, idade INTEGER)"
+
+
+class Teste:
+    def __init__(self):
+        print("Iniciado")
+        self.conn = None
+        self.connect()
+
+    async def connect(self):
+        self.conn = await aiosqlite.connect("main.db")
+    def execute(self):
+        cursor = self.conn.cursor()
+        cursor.execute(query)
+
+    def __del__(self):
+        print("Finalizado")
+
+
+async def main():
+
+    t = Teste()
+    t.connect()
+    t.execute()
+
 if __name__ == "__main__":
+    asyncio.run(main())
 
-    db = SQLiteDB("main.db")
-
-
-    db.close()
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/

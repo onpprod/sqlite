@@ -4,23 +4,26 @@ from datetime import datetime
 import asyncio
 
 class SQLiteDB:
-    def __init__(self, db_name):
+    def __init__(self, db_name="shell.db"):
         self.db_name = db_name
         self.conn = None
+        self.tables_columns = None
+        self.tables_keys = None
+        self._init_db()
+        print(f"Conexão com o banco de dados {self.db_name} estabelecida")
+
+    def _init_db(self):
+        self.conn = asyncio.run(self.connect())
 
     async def connect(self):
-        self.conn = await aiosqlite.connect(self.db_name)
-        self.conn.row_factory = aiosqlite.Row
-
-    async def close(self):
-        if self.conn:
-            await self.conn.close()
-
-    async def create_table(self, table_name, columns):
-        async with self.conn.cursor() as cursor:
-            create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})"
-            await cursor.execute(create_table_sql)
-
+        try:
+            self.conn = await aiosqlite.connect(self.db_name)
+            self.conn.row_factory = aiosqlite.Row
+            self.tables_columns = await self.get_tables_and_columns()
+            self.tables_keys = await self.get_primary_keys()
+            print(f"Conexão com o banco de dados {self.db_name} estabelecida")
+        except aiosqlite.Error as e:
+            print(f"Erro ao conectar ao banco de dados: {e}")
     async def insert_one_by_collection(self, table_name, data):
         data['timestamp'] = self.convert_timestamp(data['timestamp'])
         data = self.convert_data_to_string(data)
@@ -61,6 +64,15 @@ class SQLiteDB:
         pesquisa_filtrada = [dado for dado in pesquisa_base if (dado["id"] / step) == 0]
         return pesquisa_filtrada
 
+    async def close(self):
+        if self.conn:
+            await self.conn.close()
+
+    async def create_table(self, table_name, columns):
+        async with self.conn.cursor() as cursor:
+            create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})"
+            await cursor.execute(create_table_sql)
+
     async def get_columns(self, table_name, cursor):
         query = f"PRAGMA table_info({table_name});"
         await cursor.execute(query)
@@ -68,7 +80,9 @@ class SQLiteDB:
         column_names = [column['name'] for column in columns_info]
         return column_names
 
+    # ==================================================================================================================
     # Outros métodos da sua classe
+    # ==================================================================================================================
 
     async def convert_timestamp(self, obj):
         if '$date' in obj:
@@ -122,5 +136,10 @@ class SQLiteDB:
         pass
 
     async def insert_dict(self, tabela, dicionario):
-        # Código para inserir um dicionário na tabela
-        pass
+        self.cursor.execute(f"PRAGMA table_info({tabela})")
+        if not self.cursor.fetchall():
+            create_table_sql = f"CREATE TABLE {tabela} ({', '.join(f'{chave} {type(valor).__name__}' for chave, valor in dicionario.items())})"
+            self.cursor.execute(create_table_sql)
+        insert_sql = f"INSERT INTO {tabela} ({', '.join(dicionario.keys())}) VALUES ({', '.join(['?'] * len(dicionario))})"
+        self.cursor.execute(insert_sql, list(dicionario.values()))
+        self.conn.commit()

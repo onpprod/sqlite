@@ -43,14 +43,14 @@ async def main():
     print("Tabelas Depois: ", db.get_tables())
     # ======================================================================================================================
     top_print("Teste [count]",100)
-    print(f"Count: {db.count()}")
+    print(f"Count: {await db.count()}")
     # # ======================================================================================================================
     top_print("Teste [find] without query",100)
-    out_data = db.find({},size=1)
+    out_data = await db.find({},size=1)
     print(f"Data: {out_data}")
     # # ======================================================================================================================
     top_print("Teste [find] with query",100)
-    out_data = db.find(query,size=1)
+    out_data = await db.find(query, size=1)
     print(f"Data: {out_data}")
     # ======================================================================================================================
     top_print("Teste [find] with query & projection",100)
@@ -69,7 +69,7 @@ async def main():
 
     fim = time.time()
     print("Time:",fim-inicio)
-    db.close()
+    await db.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

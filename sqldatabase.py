@@ -8,7 +8,7 @@ class SQLiteDB:
     SQLITE by ONPPROD
     """
 
-    def __init__(self, db_name):
+    def __init__(self, db_name="shell.db"):
         """
         :param db_name: path for the .db archive
         """
@@ -17,7 +17,7 @@ class SQLiteDB:
         self.cursor = self.conn.cursor()
         self.tables_columns = self.get_tables_and_columns()
         self.tables_keys = self.get_primary_keys()
-        print(f"Conexão com o banco de dados {self.db_name} estabelecida")
+        #print(f"Conexão com o banco de dados {self.db_name} estabelecida")
 
     # ==================================================================================================================
     # ==================================================================================================================
@@ -35,6 +35,7 @@ class SQLiteDB:
         """
         return
 
+    # ==================================================================================================================
     # ==================================================================================================================
     def create_index(self, index_columns, order=None, unique=True):
         table_name = "students"
@@ -70,28 +71,28 @@ class SQLiteDB:
         self.conn.commit()
 
     # ==================================================================================================================
-    def insert_one(self, data):
+    async def insert_one(self, data):
         table_name = 'variable_history'
-        timestamp = data['timestamp']
-        data['timestamp'] = self.convert_timestamp(timestamp)
+        if 'timestamp' in data.keys():
+            data['timestamp'] = self.convert_timestamp(data['timestamp'])
         data = self.convert_data_to_string(data)
         self.insert_dict(table_name, data)
 
-    # async \
-    def insert_one_by_collection(self, table_name, data):
-        data['timestamp'] = self.convert_timestamp(data['timestamp'])
+    async def insert_one_by_collection(self, table_name, data):
+        if 'timestamp' in data.keys():
+            data['timestamp'] = self.convert_timestamp(data['timestamp'])
         data = self.convert_data_to_string(data)
         self.insert_dict(table_name, data)
 
     # ==================================================================================================================
     # async \
-    def find(self, query, projection=None, size=1000):
+    async def find(self, query, projection=None, size=1000):
         table_name = "variable_history"
         # await (self.find_by_collection(table_name,query,projection,size,None))
-        return self.find_by_collection(table_name, query, projection, size, None)
+        return await self.find_by_collection(table_name, query, projection, size, None)
 
     # async \
-    def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
+    async def find_by_collection(self, table_name: str, query: dict, projection=None, size=1000, sort=None):
 
         columns = self.get_columns(table_name)
 
@@ -123,22 +124,22 @@ class SQLiteDB:
 
     # ==================================================================================================================
     # async\
-    def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
-        pesquisa_base = self.find(query, size=size)
+    async def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
+        pesquisa_base = await self.find(query, size=size)
 
         pesquisa_filtrada = [dado for dado in pesquisa_base if (dado["id"] % step) == 0]
 
         return pesquisa_filtrada
 
     # ==================================================================================================================
-    def count(self):
+    async def count(self):
         nome_tabela = "variable_history"
         consulta_sql = f"SELECT COUNT(*) FROM {nome_tabela}"
         self.cursor.execute(consulta_sql)
         resultado = self.cursor.fetchone()[0]
         return resultado
 
-    def count_by_collection(self, nome_tabela):
+    async def count_by_collection(self, nome_tabela):
         consulta_sql = f"SELECT COUNT(*) FROM {nome_tabela}"
         self.cursor.execute(consulta_sql)
         resultado = self.cursor.fetchone()[0]
@@ -148,7 +149,6 @@ class SQLiteDB:
     """
     Auxiliary data manipulation and conversion functions
     """
-
     # ==================================================================================================================
     def find_query_generator(self, table_name: list, columns_names: list, query_conditions: dict, projection: dict,
                              sort, size):
@@ -240,6 +240,12 @@ class SQLiteDB:
         return resultado
 
     def insert_dict(self, tabela, dicionario):
+        """
+        Inserts a dictionary into a table, but if the table does not exist, it creates the table and the fields before inserting the data.
+        :param tabela: Table name
+        :param dicionario: Dictionary
+        :return:
+        """
         self.cursor.execute(f"PRAGMA table_info({tabela})")
         if not self.cursor.fetchall():
             create_table_sql = f"CREATE TABLE {tabela} ({', '.join(f'{chave} {type(valor).__name__}' for chave, valor in dicionario.items())})"
@@ -250,16 +256,21 @@ class SQLiteDB:
 
     def list_verifier(self, lista1: list, lista2: list):
         """
-        Verifica se o conteudo da lista1 existe na lista2
+        Checks if the contents of list1 exist in list2
         :param lista1:
         :param lista2:
-        :return:
+        :return: Boolean
         """
         conjunto1 = set(lista1)
         conjunto2 = set(lista2)
         return conjunto1.issubset(conjunto2)
 
     def convert_timestamp(self, obj):
+        """
+        Converts a timstamp object to a UNIX timestamp
+        :param obj: timestamp (datetime)
+        :return: UNIX timestamp
+        """
         if '$date' in obj:
             date_str = obj['$date'].replace('Z', '+00:00')
             datetime_obj = datetime.fromisoformat(date_str)
@@ -269,6 +280,11 @@ class SQLiteDB:
             return obj
 
     def convert_data_to_string(self, d):
+        """
+        Converts dictionaries within another dictionary to a JSON string
+        :param d: A dictionary with another dictionary inside
+        :return: A dictionary with a JSON string
+        """
         for chave, valor in d.items():
             if isinstance(valor, dict):
                 d[chave] = json.dumps(valor)
@@ -285,6 +301,11 @@ class SQLiteDB:
         return d
 
     def convert_data_to_dict(self, d):
+        """
+        Converts stored values in JSON string format inside a dictionary to a dictionary
+        :param d: Input dictionary with JSON strings in values
+        :return: Dictionary converted
+        """
         for chave, valor in d.items():
             if isinstance(valor, str):
                 try:
@@ -308,9 +329,9 @@ class SQLiteDB:
     # ==================================================================================================================
     def create_table(self, table_name, columns):
         """
-        :param table_name: insert the table name
-        :param columns: create the columns. Ex: "name TEXT, age INTEGER"
-        :return:
+        :param table_name: Table name
+        :param columns: Create the columns. Ex: "name TEXT, age INTEGER"
+        :return: None
         """
         create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})"
         self.cursor.execute(create_table_sql)
@@ -319,6 +340,11 @@ class SQLiteDB:
         self.tables_keys = self.get_primary_keys()
 
     def drop_table(self, table_name):
+        """
+        Deletes tables from the database
+        :param table_name: Table name
+        :return: None
+        """
         cursor = self.conn.cursor()
         query = f"DROP TABLE IF EXISTS {table_name};"
         cursor.execute(query)
@@ -326,8 +352,8 @@ class SQLiteDB:
 
     def get_tables_and_columns(self):
         """
-        Consulta SQL para obter os nomes de todas as tabelas e colunas no banco de dados
-        :return:
+        SQL query to get the names of all tables and columns in the database
+        :return: Dictionary containing tables(key) and their columns(value)
         """
         tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
         self.cursor.execute(tables_query)
@@ -344,8 +370,8 @@ class SQLiteDB:
 
     def get_tables(self):
         """
-        Consulta SQL para obter a lista de tabelas no banco de dados
-        :return: List with table values
+        SQL query to get the list of tables in the database
+        :return: List with table names
         """
         query = f"SELECT name FROM sqlite_master WHERE type='table';"
         self.cursor.execute(query)
@@ -355,9 +381,9 @@ class SQLiteDB:
 
     def get_columns(self, table_name):
         """
-        Consulta SQL para obter a lista de colunas em uma tabela no banco de dados
-        :param table_name:
-        :return: List with columns values
+        SQL query to get the list of columns names in a table in the database
+        :param table_name: Table name
+        :return: List with columns names
         """
         query = f"PRAGMA table_info({table_name});"
         self.cursor.execute(query)
@@ -367,8 +393,8 @@ class SQLiteDB:
 
     def get_primary_keys(self):
         """
-        Consulta SQL para obter os nomes de todas as tabelas no banco de dados
-        :return:
+        SQL query to get the names of all tables in the database
+        :return: Dict with tables(key) and primary keys(value)
         """
         tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
         self.cursor.execute(tables_query)
@@ -392,18 +418,25 @@ class SQLiteDB:
 
     def fetch_data(self, table_name, condition=None):
         """
-        :param table_name: table name in the database
-        :param condition: condition after WHERE for  in the database
-        :return: table with data
+        Basic method to obtain data from a table
+        :param table_name: table name
+        :param condition: condition after WHERE, e.g. " name = "Arthur" "
+        :return: table data
         """
         condition = f"WHERE {condition}" if condition else ""
         select_data_sql = f"SELECT * FROM {table_name} {condition}"
         self.cursor.execute(select_data_sql)
         return self.cursor.fetchall()
 
-    def close(self):
-        self.conn.close()
+    async def close(self):
+        """
+        Closes the connection to the database
+        :return: None
+        """
+        if self.conn:
+            self.conn.close()
 
     def __del__(self):
-        self.close()
-        print(f"Conexão com o banco de dados {self.db_name} fechada")
+        if self.conn:
+            self.conn.close()
+        #print(f"Conexão com o banco de dados {self.db_name} fechada")
