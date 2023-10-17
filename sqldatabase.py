@@ -8,7 +8,7 @@ class SQLiteDB:
     SQLITE by ONPPROD
     """
 
-    def __init__(self, db_name="shell.db"):
+    def __init__(self, db_name="aas.db"):
         """
         :param db_name: path for the .db archive
         """
@@ -17,7 +17,7 @@ class SQLiteDB:
         self.cursor = self.conn.cursor()
         self.tables_columns = self.get_tables_and_columns()
         self.tables_keys = self.get_primary_keys()
-        #print(f"Conexão com o banco de dados {self.db_name} estabelecida")
+        # print(f"Conexão com o banco de dados {self.db_name} estabelecida")
 
     # ==================================================================================================================
     # ==================================================================================================================
@@ -125,30 +125,29 @@ class SQLiteDB:
     # ==================================================================================================================
     # async\
     async def aggregation(self, query: dict, step: int, count: int = 0, size=1000):
-        pesquisa_base = await self.find(query, size=size)
-
-        pesquisa_filtrada = [dado for dado in pesquisa_base if (dado["id"] % step) == 0]
-
-        return pesquisa_filtrada
+        base_search = await self.find(query, size=size)
+        filtered_search = [dado for dado in base_search if (dado["id"] % step) == 0]
+        return filtered_search
 
     # ==================================================================================================================
     async def count(self):
-        nome_tabela = "variable_history"
-        consulta_sql = f"SELECT COUNT(*) FROM {nome_tabela}"
+        table_name = "variable_history"
+        consulta_sql = f"SELECT COUNT(*) FROM {table_name}"
         self.cursor.execute(consulta_sql)
-        resultado = self.cursor.fetchone()[0]
-        return resultado
+        result = self.cursor.fetchone()[0]
+        return result
 
-    async def count_by_collection(self, nome_tabela):
-        consulta_sql = f"SELECT COUNT(*) FROM {nome_tabela}"
-        self.cursor.execute(consulta_sql)
-        resultado = self.cursor.fetchone()[0]
-        return resultado
+    async def count_by_collection(self, table_name: str):
+        query_sql = f"SELECT COUNT(*) FROM {table_name}"
+        self.cursor.execute(query_sql)
+        result = self.cursor.fetchone()[0]
+        return result
 
     # ==================================================================================================================
     """
     Auxiliary data manipulation and conversion functions
     """
+
     # ==================================================================================================================
     def find_query_generator(self, table_name: list, columns_names: list, query_conditions: dict, projection: dict,
                              sort, size):
@@ -216,7 +215,6 @@ class SQLiteDB:
         return query_sql, values
 
     def gerar_query(nome_tabela, ordem=None, limite=1000):
-        # Conecte-se ao banco de dados SQLite
         conn = sqlite3.connect('seu_banco_de_dados.db')
         cursor = conn.cursor()
 
@@ -233,11 +231,11 @@ class SQLiteDB:
         # Adicione a cláusula LIMIT
         base_sql += f" LIMIT {limite}"
 
-    def convert_data_to_zip(self, lista, tupla):
-        if len(lista) != len(tupla):
-            raise ValueError("A lista e a tupla devem ter o mesmo número de elementos.")
-        resultado = dict(zip(lista, tupla))
-        return resultado
+    def convert_data_to_zip(self, list, tuple):
+        if len(list) != len(tuple):
+            raise ValueError("The list and tuple must have the same number of elements.")
+        result = dict(zip(list, tuple))
+        return result
 
     def insert_dict(self, tabela, dicionario):
         """
@@ -254,16 +252,16 @@ class SQLiteDB:
         self.cursor.execute(insert_sql, list(dicionario.values()))
         self.conn.commit()
 
-    def list_verifier(self, lista1: list, lista2: list):
+    def list_verifier(self, list1: list, list2: list):
         """
         Checks if the contents of list1 exist in list2
-        :param lista1:
-        :param lista2:
+        :param list1:
+        :param list2:
         :return: Boolean
         """
-        conjunto1 = set(lista1)
-        conjunto2 = set(lista2)
-        return conjunto1.issubset(conjunto2)
+        set1 = set(list1)
+        set2 = set(list2)
+        return set1.issubset(set2)
 
     def convert_timestamp(self, obj):
         """
@@ -325,7 +323,6 @@ class SQLiteDB:
     """
     Sqlite manipulation auxiliary functions
     """
-
     # ==================================================================================================================
     def create_table(self, table_name, columns):
         """
@@ -439,4 +436,4 @@ class SQLiteDB:
     def __del__(self):
         if self.conn:
             self.conn.close()
-        #print(f"Conexão com o banco de dados {self.db_name} fechada")
+        # print(f"Conexão com o banco de dados {self.db_name} fechada")
